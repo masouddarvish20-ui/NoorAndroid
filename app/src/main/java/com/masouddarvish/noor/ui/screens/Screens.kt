@@ -118,7 +118,6 @@ fun HomeScreen(onNavigate: (Screen) -> Unit) {
         }
         }
     }
-}
 
 private val ayatLines = listOf(
     "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ" to "خداست که هیچ معبودی جز او نیست؛ زنده و برپادارنده است.",
