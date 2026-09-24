@@ -4,7 +4,7 @@ import android.Manifest;import android.app.*;import android.os.*;import android.
 
 public class MainActivity extends Activity {
  LinearLayout root,list; EditText input; Spinner section; JSONArray items; int tab=0; final String[] tabs={"امروز","صندوق","کارها","پروژه‌ها","جست‌وجو"};
- int ink=Color.rgb(23,34,59),blue=Color.rgb(46,91,211); SpeechRecognizer recognizer; MediaRecorder recorder; MediaPlayer player; String pendingAudio; Button recordButton;
+ int ink=Color.rgb(23,34,59),blue=Color.rgb(46,91,211); SpeechRecognizer recognizer; Button speechButton; boolean listening=false; MediaRecorder recorder; MediaPlayer player; String pendingAudio; Button recordButton;
  public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(ink);getWindow().setNavigationBarColor(ink);getWindow().getDecorView().setSystemUiVisibility(0);load();show();}
  void load(){try{items=new JSONArray(getPreferences(0).getString("items","[]"));}catch(Exception e){items=new JSONArray();}}
  void save(){getPreferences(0).edit().putString("items",items.toString()).apply();}
@@ -17,7 +17,7 @@ public class MainActivity extends Activity {
  TextView sub=text("هر چیزی یادت آمد، همین‌جا ثبت کن",13);sub.setTextColor(Color.rgb(96,112,143));sub.setGravity(Gravity.CENTER);root.addView(sub);
  HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);LinearLayout nav=new LinearLayout(this);nav.setPadding(dp(10),dp(6),dp(10),dp(10));for(int j=0;j<tabs.length;j++){final int k=j;Button b=button(tabs[j],blue,j==tab);LinearLayout.LayoutParams n=new LinearLayout.LayoutParams(dp(95),dp(48));n.setMargins(dp(3),0,dp(3),0);nav.addView(b,n);b.setOnClickListener(v->{tab=k;show();});}hs.addView(nav);root.addView(hs);
  if(tab!=4){LinearLayout compose=new LinearLayout(this);compose.setOrientation(1);compose.setPadding(dp(14),dp(8),dp(14),dp(12));root.addView(compose);
- Button mic=button("🎙  گفتار به متن",blue,true);compose.addView(mic,new LinearLayout.LayoutParams(-1,dp(54)));mic.setOnClickListener(v->listen());
+ speechButton=button("🎙  گفتار به متن",blue,true);compose.addView(speechButton,new LinearLayout.LayoutParams(-1,dp(54)));speechButton.setOnClickListener(v->{if(listening&&recognizer!=null)recognizer.stopListening();else listen();});
  recordButton=button(recorder==null?"●  ضبط و پیوست فایل صوتی":"■  توقف ضبط",Color.WHITE,false);LinearLayout.LayoutParams rb=new LinearLayout.LayoutParams(-1,dp(52));rb.topMargin=dp(9);compose.addView(recordButton,rb);recordButton.setOnClickListener(v->toggleRecording());
  if(pendingAudio!=null){TextView a=text("فایل صوتی آماده پیوست است؛ متن را هم وارد کن.",12);compose.addView(a);}
  input=new EditText(this);input.setTextSize(16);input.setHint("چه چیزی را به خاطر بسپارم؟");input.setSingleLine(false);input.setMinLines(2);input.setGravity(Gravity.TOP|Gravity.RIGHT);input.setPadding(dp(16),dp(14),dp(16),dp(14));input.setBackground(bg(Color.WHITE,14));LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,dp(98));ip.topMargin=dp(12);compose.addView(input,ip);
@@ -25,30 +25,33 @@ public class MainActivity extends Activity {
  Button add=button("ذخیره یادداشت یا کار",ink,true);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,dp(54));ap.topMargin=dp(10);compose.addView(add,ap);add.setOnClickListener(v->add(input.getText().toString()));
  }else{input=new EditText(this);input.setHint("جست‌وجو در یادداشت‌ها و پروژه‌ها");input.setSingleLine(true);input.setPadding(dp(18),dp(12),dp(18),dp(12));input.setBackground(bg(Color.WHITE,14));LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(-1,dp(54));qp.setMargins(dp(14),dp(8),dp(14),dp(12));root.addView(input,qp);input.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int af){}public void onTextChanged(CharSequence s,int st,int before,int count){render();}public void afterTextChanged(android.text.Editable e){}});}
  ScrollView sc=new ScrollView(this);sc.setFillViewport(true);list=new LinearLayout(this);list.setOrientation(1);list.setPadding(dp(14),dp(6),dp(14),dp(18));sc.addView(list);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));render();}
+ void speechState(String label,boolean active){listening=active;if(speechButton!=null)speechButton.setText(label);}
  void listen(){
   if(recorder!=null){toast("اول ضبط فایل صوتی را متوقف کنید");return;}
-  try{
-   Intent i=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-   i.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR");
-   i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,"fa-IR");
-   i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-   i.putExtra(RecognizerIntent.EXTRA_PROMPT,"صحبت کنید؛ متن بعد از پایان نمایش داده می‌شود");
-   i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,3);
-   startActivityForResult(i,41);
-  }catch(android.content.ActivityNotFoundException e){
-   toast("سرویس گفتار در گوشی فعال نیست؛ Google را نصب یا به‌روزرسانی کنید");
-  }catch(Exception e){toast("بازکردن تشخیص گفتار ممکن نشد");}
+  if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=getPackageManager().PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},7);return;}
+  if(!SpeechRecognizer.isRecognitionAvailable(this)){toast("سرویس گفتار گوشی فعال نیست");return;}
+  if(recognizer!=null)recognizer.destroy();
+  recognizer=SpeechRecognizer.createSpeechRecognizer(this);
+  recognizer.setRecognitionListener(new RecognitionListener(){
+   public void onReadyForSpeech(Bundle p){speechState("■  پایان صحبت",true);toast("نزدیک میکروفون گوشی صحبت کنید");}
+   public void onBeginningOfSpeech(){speechState("●  در حال شنیدن…",true);}
+   public void onRmsChanged(float v){} public void onBufferReceived(byte[] b){}
+   public void onEndOfSpeech(){speechState("در حال تبدیل صدا به متن…",false);}
+   public void onError(int e){speechState("🎙  گفتار به متن",false);String m=(e==SpeechRecognizer.ERROR_NO_MATCH||e==SpeechRecognizer.ERROR_SPEECH_TIMEOUT)?"صدایی تشخیص داده نشد؛ نزدیک گوشی صحبت کنید":(e==SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS?"اجازه میکروفون داده نشده":(e==SpeechRecognizer.ERROR_NETWORK||e==SpeechRecognizer.ERROR_NETWORK_TIMEOUT?"اتصال اینترنت یا سرویس گفتار را بررسی کنید":"تشخیص گفتار متوقف شد؛ دوباره امتحان کنید"));toast(m);}
+   void put(Bundle b){ArrayList<String> a=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(a!=null&&!a.isEmpty()&&input!=null){input.setText(a.get(0));input.setSelection(input.length());}}
+   public void onResults(Bundle b){put(b);speechState("🎙  گفتار به متن",false);}
+   public void onPartialResults(Bundle b){put(b);} public void onEvent(int e,Bundle b){}
+  });
+  Intent i=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+  i.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"fa-IR");
+  i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,"fa-IR");
+  i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+  i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);
+  i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,3);
+  speechState("آماده شنیدن…",true);
+  recognizer.startListening(i);
  }
- @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
-  super.onActivityResult(requestCode,resultCode,data);
-  if(requestCode==41){
-   if(resultCode==RESULT_OK&&data!=null){
-    ArrayList<String> results=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-    if(results!=null&&!results.isEmpty()){input.setText(results.get(0));input.setSelection(input.length());}
-    else toast("متنی دریافت نشد؛ دوباره امتحان کنید");
-   }else if(resultCode!=RESULT_CANCELED){toast("تشخیص گفتار انجام نشد؛ دوباره امتحان کنید");}
-  }
- }
+ @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==7&&results.length>0&&results[0]==getPackageManager().PERMISSION_GRANTED)listen();}
  void toggleRecording(){if(recorder!=null){try{recorder.stop();toast("صدا آماده ذخیره است");}catch(Exception e){new File(pendingAudio).delete();pendingAudio=null;toast("ضبط خیلی کوتاه بود؛ دوباره امتحان کنید");}finally{recorder.release();recorder=null;recordButton.setText("●  ضبط دوباره فایل صوتی");}return;}if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=getPackageManager().PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},7);return;}try{if(recognizer!=null){recognizer.destroy();recognizer=null;}if(pendingAudio!=null)new File(pendingAudio).delete();File f=new File(getFilesDir(),"voice_"+System.currentTimeMillis()+".m4a");pendingAudio=f.getAbsolutePath();recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setOutputFile(pendingAudio);recorder.prepare();recorder.start();recordButton.setText("■  توقف ضبط");}catch(Exception e){if(recorder!=null){recorder.release();recorder=null;}pendingAudio=null;toast("شروع ضبط ممکن نشد");}}
  void play(String path){try{if(player!=null){player.release();player=null;}player=new MediaPlayer();player.setDataSource(path);player.setOnCompletionListener(p->{p.release();player=null;});player.prepare();player.start();}catch(Exception e){toast("فایل صوتی پیدا نشد");}}
  String classify(String s){if(section!=null&&section.getSelectedItemPosition()>0)return section.getSelectedItem().toString();if(s.contains("ذکران")||s.contains("آیت الکرسی")||s.contains("تقویم"))return "ذکران";if(s.contains("سایت")||s.contains("صفحه پروژه"))return "سایت";if(s.contains("مدیریت مالی")||s.contains("اقساط"))return "مدیر مالی من";if(s.contains("انبار")||s.contains("کارخانه")||s.contains("موجودی")||s.contains("پیمانکار"))return "کار / انبار";if(s.contains("خانه")||s.contains("خرید"))return "خانه";return "شخصی";}
