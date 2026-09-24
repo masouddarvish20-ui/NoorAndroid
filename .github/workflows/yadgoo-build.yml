@@ -2,6 +2,8 @@ name: Build Yadgoo APK
 on:
   push:
     branches: [yadgoo-android-build]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   build:
